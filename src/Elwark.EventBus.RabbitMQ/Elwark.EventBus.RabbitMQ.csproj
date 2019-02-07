@@ -5,6 +5,7 @@
         <Authors>makhmutov.nail</Authors>
         <PackageProjectUrl>https://github.com/nmakhmutov/Elwark.EventBus</PackageProjectUrl>
         <RepositoryUrl>https://github.com/nmakhmutov/Elwark.EventBus</RepositoryUrl>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     </PropertyGroup>
 
     <ItemGroup>

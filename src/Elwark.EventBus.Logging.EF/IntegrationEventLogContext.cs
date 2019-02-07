@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace Elwark.EventLog.EF
+namespace Elwark.EventBus.Logging.EF
 {
     public class IntegrationEventLogContext : DbContext
     {   
@@ -21,6 +21,10 @@ namespace Elwark.EventLog.EF
         {
             builder.ToTable("integration_event_log");
 
+            builder.Ignore(x => x.EventTypeShortName);
+
+            builder.Ignore(x => x.IntegrationEvent);
+            
             builder.HasKey(e => e.EventId);
 
             builder.Property(e => e.EventId)

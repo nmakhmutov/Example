@@ -1,13 +1,17 @@
-﻿using System.Data.Common;
+﻿using System;
+using System.Collections.Generic;
+using System.Data.Common;
 using System.Threading.Tasks;
 using Elwark.EventBus.Abstractions;
 
-namespace Elwark.EventLog.EF
+namespace Elwark.EventBus.Logging.EF
 {
     public interface IIntegrationEventLogService
     {
-        Task SaveEventAsync(IntegrationEvent evt, DbTransaction transaction);
-        
-        Task MarkEventAsPublishedAsync(IntegrationEvent evt);
+        Task<IEnumerable<IntegrationEventLogEntry>> RetrieveEventLogsPendingToPublishAsync();
+        Task SaveEventAsync(IntegrationEvent evt);
+        Task MarkEventAsPublishedAsync(Guid eventId);
+        Task MarkEventAsInProgressAsync(Guid eventId);
+        Task MarkEventAsFailedAsync(Guid eventId);
     }
 }

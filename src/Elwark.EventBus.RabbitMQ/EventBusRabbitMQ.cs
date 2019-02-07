@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using Elwark.EventBus.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -30,8 +31,8 @@ namespace Elwark.EventBus.RabbitMQ
             IRabbitMQPersistentConnection persistentConnection,
             ILogger<EventBusRabbitMQ> logger,
             IEventBusSubscriptionsManager subsManager,
-            IServiceProvider serviceProvider, 
-            string exchangeName, 
+            IServiceProvider serviceProvider,
+            string exchangeName,
             string queueName = null,
             int retryCount = 5)
         {
@@ -40,7 +41,7 @@ namespace Elwark.EventBus.RabbitMQ
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _subsManager = subsManager ?? new InMemoryEventBusSubscriptionsManager();
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-            _exchangeName = exchangeName;
+            _exchangeName = exchangeName ?? throw new ArgumentNullException(nameof(exchangeName));
             _queueName = queueName;
             _consumerChannel = CreateConsumerChannel();
             _retryCount = retryCount;
@@ -62,7 +63,7 @@ namespace Elwark.EventBus.RabbitMQ
             var policy = Policy.Handle<BrokerUnreachableException>()
                 .Or<SocketException>()
                 .WaitAndRetry(_retryCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                    (ex, time) => { _logger.LogWarning(ex, ex.Message); });
+                    (ex, time) => _logger.LogWarning(ex, ex.Message));
 
             using (var channel = _persistentConnection.CreateModel())
             {
@@ -122,7 +123,7 @@ namespace Elwark.EventBus.RabbitMQ
                     await Task.Delay(TimeSpan.FromSeconds(10));
                     return;
                 }
-                    
+
 
                 var eventName = ea.RoutingKey;
                 var message = Encoding.UTF8.GetString(ea.Body);
@@ -146,24 +147,26 @@ namespace Elwark.EventBus.RabbitMQ
         private async Task ProcessEvent(string eventName, string message)
         {
             if (_subsManager.HasSubscriptionsForEvent(eventName))
-                foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
-                    if (subscription.IsDynamic)
-                    {
-                        var handler = _serviceProvider.GetService(subscription.HandlerType) as IDynamicIntegrationEventHandler
-                            ?? throw new EntryPointNotFoundException(eventName);
+                using (var scope = _serviceProvider.CreateScope())
+                    foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
+                        if (subscription.IsDynamic)
+                        {
+                            if (!(scope.ServiceProvider.GetService(subscription.HandlerType) is IDynamicIntegrationEventHandler handler))
+                                continue;
 
-                        await handler.Handle((dynamic) JObject.Parse(message));
-                    }
-                    else
-                    {
-                        var eventType = _subsManager.GetEventTypeByName(eventName);
-                        var integrationEvent = JsonConvert.DeserializeObject(message, eventType);
+                            await handler.Handle((dynamic) JObject.Parse(message));
+                        }
+                        else
+                        {
+                            var handler = (dynamic) scope.ServiceProvider.GetService(subscription.HandlerType);
+                            if (handler is null)
+                                continue;
 
-                        var handler = (dynamic) _serviceProvider.GetService(subscription.HandlerType);
-                        
-                        
-                        await handler.Handle((dynamic) integrationEvent);
-                    }
+                            var eventType = _subsManager.GetEventTypeByName(eventName);
+                            var integrationEvent = JsonConvert.DeserializeObject(message, eventType);
+
+                            await handler.Handle((dynamic) integrationEvent);
+                        }
         }
 
         private void SubsManager_OnEventRemoved(object sender, string eventName)

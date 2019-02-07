@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
-namespace Elwark.EventLog.EF
+namespace Elwark.EventBus.Logging.EF
 {
     public class ResilientTransaction
     {

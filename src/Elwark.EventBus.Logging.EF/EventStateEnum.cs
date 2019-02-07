@@ -1,9 +1,10 @@
-﻿namespace Elwark.EventLog.EF
+﻿namespace Elwark.EventBus.Logging.EF
 {
     public enum EventStateEnum
     {
         NotPublished = 0,
-        Published = 1,
-        PublishedFailed = 2
+        InProgress = 1,
+        Published = 2,
+        PublishedFailed = 3
     }
 }
