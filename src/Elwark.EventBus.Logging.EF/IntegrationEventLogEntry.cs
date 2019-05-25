@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
-using System.Text.Json.Serialization;
 using Elwark.EventBus.Abstractions;
+using Newtonsoft.Json;
 
 namespace Elwark.EventBus.Logging.EF
 {
@@ -14,7 +14,7 @@ namespace Elwark.EventBus.Logging.EF
             EventId = evt.Id;            
             CreationTime = evt.CreationDate;
             EventTypeName = evt.GetType().FullName;
-            Content = JsonSerializer.ToString(evt);
+            Content = JsonConvert.SerializeObject(evt);
             State = EventStateEnum.NotPublished;
             TimesSent = 0;
         }
@@ -33,7 +33,7 @@ namespace Elwark.EventBus.Logging.EF
 
         public IntegrationEventLogEntry DeserializeJsonContent(Type type)
         {
-            IntegrationEvent = JsonSerializer.Parse(Content, type) as IntegrationEvent;
+            IntegrationEvent = JsonConvert.DeserializeObject(Content, type) as IntegrationEvent;
             return this;
         }
     }
