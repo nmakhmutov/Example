@@ -62,8 +62,12 @@ namespace Elwark.EventBus.RabbitMQ
 
             var policy = Policy.Handle<BrokerUnreachableException>()
                 .Or<SocketException>()
-                .WaitAndRetry(_retryCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                    (ex, time) => _logger.LogWarning(ex, ex.Message));
+                .WaitAndRetry(_retryCount,
+                    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                    (ex, time) => _logger.LogWarning(ex,
+                        "Could not publish event: {EventId} after {Timeout}s ({ExceptionMessage})", evt.Id,
+                        $"{time.TotalSeconds:n1}", ex.Message)
+                );
 
             using (var channel = _persistentConnection.CreateModel())
             {
@@ -78,23 +82,32 @@ namespace Elwark.EventBus.RabbitMQ
                 {
                     var properties = channel.CreateBasicProperties();
                     properties.DeliveryMode = 2; // persistent
+                    properties.Persistent = true;
 
                     channel.BasicPublish(_exchangeName, eventName, true, properties, body);
                 });
             }
         }
 
-        public void Subscribe<T, TH>() where T : IntegrationEvent where TH : IIntegrationEventHandler<T>
+        public void SubscribeDynamic<TH>(string eventName) where TH : IDynamicIntegrationEventHandler
+        {
+            _logger.LogInformation("Subscribing to dynamic event {EventName} with {EventHandler}", eventName,
+                typeof(TH).FullName);
+
+            DoInternalSubscription(eventName);
+            _subsManager.AddDynamicSubscription<TH>(eventName);
+        }
+
+        public void Subscribe<T, TH>()
+            where T : IntegrationEvent
+            where TH : IIntegrationEventHandler<T>
         {
             var eventName = _subsManager.GetEventKey<T>();
             DoInternalSubscription(eventName);
-            _subsManager.AddSubscription<T, TH>();
-        }
+            _logger.LogInformation("Subscribing to event {EventName} with {EventHandler}", eventName,
+                typeof(TH).FullName);
 
-        public void SubscribeDynamic<TH>(string eventName) where TH : IDynamicIntegrationEventHandler
-        {
-            DoInternalSubscription(eventName);
-            _subsManager.AddDynamicSubscription<TH>(eventName);
+            _subsManager.AddSubscription<T, TH>();
         }
 
         public void UnsubscribeDynamic<TH>(string eventName) where TH : IDynamicIntegrationEventHandler =>
@@ -115,15 +128,22 @@ namespace Elwark.EventBus.RabbitMQ
             channel.QueueDeclare(_queueName, true, false, false, null);
 
             var consumer = new EventingBasicConsumer(channel);
-            consumer.Received += async (model, ea) =>
+
+            var counter = 0;
+            
+            async void OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
             {
                 if (_subsManager.IsEmpty)
                 {
-                    channel.BasicNack(ea.DeliveryTag, false, true);
+                    if (counter >= _retryCount)
+                        consumer.Received -= OnConsumerOnReceived;
+                    
                     await Task.Delay(TimeSpan.FromSeconds(10));
+                    counter++;
+                    channel.BasicNack(ea.DeliveryTag, false, true);
+                    
                     return;
                 }
-
 
                 var eventName = ea.RoutingKey;
                 var message = Encoding.UTF8.GetString(ea.Body);
@@ -131,7 +151,9 @@ namespace Elwark.EventBus.RabbitMQ
                 await ProcessEvent(eventName, message);
 
                 channel.BasicAck(ea.DeliveryTag, false);
-            };
+            }
+
+            consumer.Received += OnConsumerOnReceived;
 
             channel.BasicConsume(_queueName, false, consumer);
 
@@ -146,27 +168,30 @@ namespace Elwark.EventBus.RabbitMQ
 
         private async Task ProcessEvent(string eventName, string message)
         {
-            if (_subsManager.HasSubscriptionsForEvent(eventName))
-                using (var scope = _serviceProvider.CreateScope())
-                    foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
-                        if (subscription.IsDynamic)
-                        {
-                            if (!(scope.ServiceProvider.GetService(subscription.HandlerType) is IDynamicIntegrationEventHandler handler))
-                                continue;
+            if (!_subsManager.HasSubscriptionsForEvent(eventName))
+                return;
+            
+            using (var scope = _serviceProvider.CreateScope())
+                foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
+                    if (subscription.IsDynamic)
+                    {
+                        if (!(scope.ServiceProvider.GetService(subscription.HandlerType) is
+                            IDynamicIntegrationEventHandler handler))
+                            continue;
 
-                            await handler.Handle((dynamic) JObject.Parse(message));
-                        }
-                        else
-                        {
-                            var handler = (dynamic) scope.ServiceProvider.GetService(subscription.HandlerType);
-                            if (handler is null)
-                                continue;
+                        await handler.Handle((dynamic) JObject.Parse(message));
+                    }
+                    else
+                    {
+                        var handler = (dynamic) scope.ServiceProvider.GetService(subscription.HandlerType);
+                        if (handler is null)
+                            continue;
 
-                            var eventType = _subsManager.GetEventTypeByName(eventName);
-                            var integrationEvent = JsonConvert.DeserializeObject(message, eventType);
+                        var eventType = _subsManager.GetEventTypeByName(eventName);
+                        var integrationEvent = JsonConvert.DeserializeObject(message, eventType);
 
-                            await handler.Handle((dynamic) integrationEvent);
-                        }
+                        await handler.Handle((dynamic) integrationEvent);
+                    }
         }
 
         private void SubsManager_OnEventRemoved(object sender, string eventName)
@@ -178,24 +203,24 @@ namespace Elwark.EventBus.RabbitMQ
             {
                 channel.QueueUnbind(_queueName, _exchangeName, eventName);
 
-                if (_subsManager.IsEmpty)
-                {
-                    _queueName = string.Empty;
-                    _consumerChannel.Close();
-                }
+                if (!_subsManager.IsEmpty)
+                    return;
+
+                _queueName = string.Empty;
+                _consumerChannel.Close();
             }
         }
 
         private void DoInternalSubscription(string eventName)
         {
-            if (!_subsManager.HasSubscriptionsForEvent(eventName))
-            {
-                if (!_persistentConnection.IsConnected)
-                    _persistentConnection.TryConnect();
+            if (_subsManager.HasSubscriptionsForEvent(eventName))
+                return;
 
-                using (var channel = _persistentConnection.CreateModel())
-                    channel.QueueBind(_queueName, _exchangeName, eventName);
-            }
+            if (!_persistentConnection.IsConnected)
+                _persistentConnection.TryConnect();
+
+            using (var channel = _persistentConnection.CreateModel())
+                channel.QueueBind(_queueName, _exchangeName, eventName);
         }
     }
 }

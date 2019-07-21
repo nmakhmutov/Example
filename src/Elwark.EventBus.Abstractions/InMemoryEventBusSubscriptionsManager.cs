@@ -8,14 +8,14 @@ namespace Elwark.EventBus.Abstractions
     {
         private readonly Dictionary<string, List<SubscriptionInfo>> _handlers;
 
-        private readonly List<Type> _eventTypes;
+        private readonly HashSet<Type> _eventTypes;
 
         public event EventHandler<string> OnEventRemoved;
 
         public InMemoryEventBusSubscriptionsManager()
         {
             _handlers = new Dictionary<string, List<SubscriptionInfo>>();
-            _eventTypes = new List<Type>();
+            _eventTypes = new HashSet<Type>();
         }
 
         public bool IsEmpty => !_handlers.Keys.Any();

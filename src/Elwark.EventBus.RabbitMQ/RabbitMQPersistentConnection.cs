@@ -10,7 +10,6 @@ using RabbitMQ.Client.Exceptions;
 
 namespace Elwark.EventBus.RabbitMQ
 {
-    // ReSharper disable once InconsistentNaming
     public class RabbitMQPersistentConnection : IRabbitMQPersistentConnection
     {
         private readonly IConnectionFactory _connectionFactory;
@@ -20,7 +19,8 @@ namespace Elwark.EventBus.RabbitMQ
         private IConnection _connection;
         private bool _disposed;
 
-        public RabbitMQPersistentConnection(IConnectionFactory connectionFactory, ILogger<RabbitMQPersistentConnection> logger, int retryCount = 5)
+        public RabbitMQPersistentConnection(IConnectionFactory connectionFactory,
+            ILogger<RabbitMQPersistentConnection> logger, int retryCount = 5)
         {
             _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -33,28 +33,27 @@ namespace Elwark.EventBus.RabbitMQ
         {
             _logger.LogInformation("RabbitMQ Client is trying to connect");
 
-            lock(_syncRoot)
+            lock (_syncRoot)
             {
                 RetryPolicy policy = Policy.Handle<SocketException>()
-                    .Or<BrokerUnreachableException>()
-                    .WaitAndRetry(_retryCount,
-                        retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                        (ex, time) => _logger.LogWarning(ex.ToString()));
+                        .Or<BrokerUnreachableException>()
+                        .WaitAndRetry(_retryCount,
+                            retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                            (ex, time) => _logger.LogWarning(ex,
+                                "RabbitMQ Client could not connect after {TimeOut}s ({ExceptionMessage})",
+                                $"{time.TotalSeconds:n1}", ex.Message)
+                    );
 
-                policy.Execute(() =>
-                {
-                    _connection = _connectionFactory
-                        .CreateConnection();
-                });
+                policy.Execute(() => _connection = _connectionFactory.CreateConnection());
 
-                if(IsConnected)
+                if (IsConnected)
                 {
                     _connection.ConnectionShutdown += OnConnectionShutdown;
                     _connection.CallbackException += OnCallbackException;
                     _connection.ConnectionBlocked += OnConnectionBlocked;
 
-                    _logger.LogInformation($"RabbitMQ persistent connection acquired a connection {_connection.Endpoint.HostName} and is subscribed to failure events");
-
+                    _logger.LogInformation("RabbitMQ Client acquired a persistent connection to '{HostName}' and is subscribed to failure events", _connection.Endpoint.HostName);
+                    
                     return true;
                 }
 
@@ -70,7 +69,7 @@ namespace Elwark.EventBus.RabbitMQ
 
         public void Dispose()
         {
-            if(_disposed)
+            if (_disposed)
                 return;
 
             _disposed = true;
@@ -79,7 +78,7 @@ namespace Elwark.EventBus.RabbitMQ
             {
                 _connection.Dispose();
             }
-            catch(IOException ex)
+            catch (IOException ex)
             {
                 _logger.LogCritical(ex.ToString());
             }
@@ -87,7 +86,7 @@ namespace Elwark.EventBus.RabbitMQ
 
         private void OnConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
         {
-            if(_disposed)
+            if (_disposed)
                 return;
 
             _logger.LogWarning("A RabbitMQ connection is shutdown. Trying to re-connect...");
@@ -97,7 +96,7 @@ namespace Elwark.EventBus.RabbitMQ
 
         private void OnCallbackException(object sender, CallbackExceptionEventArgs e)
         {
-            if(_disposed)
+            if (_disposed)
                 return;
 
             _logger.LogWarning("A RabbitMQ connection throw exception. Trying to re-connect...");
@@ -107,7 +106,7 @@ namespace Elwark.EventBus.RabbitMQ
 
         private void OnConnectionShutdown(object sender, ShutdownEventArgs reason)
         {
-            if(_disposed)
+            if (_disposed)
                 return;
 
             _logger.LogWarning("A RabbitMQ connection is on shutdown. Trying to re-connect...");
