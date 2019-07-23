@@ -17,5 +17,7 @@
         void Unsubscribe<T, TH>()
             where TH : IIntegrationEventHandler<T>
             where T : IntegrationEvent;
+
+        void Run();
     }
 }

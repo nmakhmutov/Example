@@ -23,9 +23,9 @@ namespace Elwark.EventBus.RabbitMQ
         private readonly int _retryCount;
         private readonly IServiceProvider _serviceProvider;
         private readonly IEventBusSubscriptionsManager _subsManager;
+        private readonly string _queueName;
 
         private IModel _consumerChannel;
-        private string _queueName;
 
         public EventBusRabbitMQ(
             IRabbitMQPersistentConnection persistentConnection,
@@ -43,7 +43,6 @@ namespace Elwark.EventBus.RabbitMQ
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             _exchangeName = exchangeName ?? throw new ArgumentNullException(nameof(exchangeName));
             _queueName = queueName;
-            _consumerChannel = CreateConsumerChannel();
             _retryCount = retryCount;
             _subsManager.OnEventRemoved += SubsManager_OnEventRemoved;
         }
@@ -73,7 +72,7 @@ namespace Elwark.EventBus.RabbitMQ
             {
                 var eventName = evt.GetType().Name;
 
-                channel.ExchangeDeclare(_exchangeName, "direct");
+                channel.ExchangeDeclare(_exchangeName, ExchangeType.Direct);
 
                 var message = JsonConvert.SerializeObject(evt);
                 var body = Encoding.UTF8.GetBytes(message);
@@ -116,6 +115,11 @@ namespace Elwark.EventBus.RabbitMQ
         public void Unsubscribe<T, TH>() where T : IntegrationEvent where TH : IIntegrationEventHandler<T> =>
             _subsManager.RemoveSubscription<T, TH>();
 
+        public void Run()
+        {
+            _consumerChannel = CreateConsumerChannel();
+        }
+
         private IModel CreateConsumerChannel()
         {
             if (!_persistentConnection.IsConnected)
@@ -129,22 +133,8 @@ namespace Elwark.EventBus.RabbitMQ
 
             var consumer = new EventingBasicConsumer(channel);
 
-            var counter = 0;
-            
             async void OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
             {
-                if (_subsManager.IsEmpty)
-                {
-                    if (counter >= _retryCount)
-                        consumer.Received -= OnConsumerOnReceived;
-                    
-                    await Task.Delay(TimeSpan.FromSeconds(10));
-                    counter++;
-                    channel.BasicNack(ea.DeliveryTag, false, true);
-                    
-                    return;
-                }
-
                 var eventName = ea.RoutingKey;
                 var message = Encoding.UTF8.GetString(ea.Body);
 
@@ -169,10 +159,17 @@ namespace Elwark.EventBus.RabbitMQ
         private async Task ProcessEvent(string eventName, string message)
         {
             if (!_subsManager.HasSubscriptionsForEvent(eventName))
+            {
+                _logger.LogWarning("Not found handler for {event}", eventName);
                 return;
-            
+            }
+
             using (var scope = _serviceProvider.CreateScope())
                 foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
+                {
+                    _logger.LogInformation("Handling {event} -> {handler}. Message {message}",
+                        eventName, subscription.HandlerType.Name, message);
+
                     if (subscription.IsDynamic)
                     {
                         if (!(scope.ServiceProvider.GetService(subscription.HandlerType) is
@@ -192,6 +189,10 @@ namespace Elwark.EventBus.RabbitMQ
 
                         await handler.Handle((dynamic) integrationEvent);
                     }
+
+                    _logger.LogInformation("Has handled {event} -> {handler} successful",
+                        eventName, subscription.HandlerType.Name);
+                }
         }
 
         private void SubsManager_OnEventRemoved(object sender, string eventName)
@@ -206,7 +207,6 @@ namespace Elwark.EventBus.RabbitMQ
                 if (!_subsManager.IsEmpty)
                     return;
 
-                _queueName = string.Empty;
                 _consumerChannel.Close();
             }
         }

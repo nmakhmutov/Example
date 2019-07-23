@@ -18,12 +18,14 @@ namespace Elwark.EventBus.RabbitMQ
         private readonly object _syncRoot = new object();
         private IConnection _connection;
         private bool _disposed;
+        private string _clientProviderName;
 
         public RabbitMQPersistentConnection(IConnectionFactory connectionFactory,
-            ILogger<RabbitMQPersistentConnection> logger, int retryCount = 5)
+            ILogger<RabbitMQPersistentConnection> logger, string clientProviderName, int retryCount = 5)
         {
             _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _clientProviderName = clientProviderName;
             _retryCount = retryCount;
         }
 
@@ -44,7 +46,7 @@ namespace Elwark.EventBus.RabbitMQ
                                 $"{time.TotalSeconds:n1}", ex.Message)
                     );
 
-                policy.Execute(() => _connection = _connectionFactory.CreateConnection());
+                policy.Execute(() => _connection = _connectionFactory.CreateConnection(_clientProviderName));
 
                 if (IsConnected)
                 {
