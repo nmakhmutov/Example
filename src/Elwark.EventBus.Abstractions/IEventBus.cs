@@ -18,6 +18,6 @@
             where TH : IIntegrationEventHandler<T>
             where T : IntegrationEvent;
 
-        void Run();
+        void StartConsume();
     }
 }

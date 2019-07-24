@@ -20,10 +20,12 @@ namespace Elwark.EventBus.RabbitMQ
         private readonly string _exchangeName;
         private readonly ILogger<EventBusRabbitMQ> _logger;
         private readonly IRabbitMQPersistentConnection _persistentConnection;
-        private readonly int _retryCount;
         private readonly IServiceProvider _serviceProvider;
         private readonly IEventBusSubscriptionsManager _subsManager;
         private readonly string _queueName;
+        
+        private readonly ushort _retryCount;
+        private readonly ushort _consumerCount;
 
         private IModel _consumerChannel;
 
@@ -34,7 +36,8 @@ namespace Elwark.EventBus.RabbitMQ
             IServiceProvider serviceProvider,
             string exchangeName,
             string queueName = null,
-            int retryCount = 5)
+            ushort consumerCount = 10,
+            ushort retryCount = 5)
         {
             _persistentConnection =
                 persistentConnection ?? throw new ArgumentNullException(nameof(persistentConnection));
@@ -43,7 +46,9 @@ namespace Elwark.EventBus.RabbitMQ
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             _exchangeName = exchangeName ?? throw new ArgumentNullException(nameof(exchangeName));
             _queueName = queueName;
+            _consumerCount = consumerCount;
             _retryCount = retryCount;
+            _consumerChannel = CreateConsumerChannel();
             _subsManager.OnEventRemoved += SubsManager_OnEventRemoved;
         }
 
@@ -115,11 +120,6 @@ namespace Elwark.EventBus.RabbitMQ
         public void Unsubscribe<T, TH>() where T : IntegrationEvent where TH : IIntegrationEventHandler<T> =>
             _subsManager.RemoveSubscription<T, TH>();
 
-        public void Run()
-        {
-            _consumerChannel = CreateConsumerChannel();
-        }
-
         private IModel CreateConsumerChannel()
         {
             if (!_persistentConnection.IsConnected)
@@ -127,25 +127,9 @@ namespace Elwark.EventBus.RabbitMQ
 
             var channel = _persistentConnection.CreateModel();
 
-            channel.ExchangeDeclare(_exchangeName, "direct");
+            channel.ExchangeDeclare(_exchangeName, ExchangeType.Direct);
 
             channel.QueueDeclare(_queueName, true, false, false, null);
-
-            var consumer = new EventingBasicConsumer(channel);
-
-            async void OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
-            {
-                var eventName = ea.RoutingKey;
-                var message = Encoding.UTF8.GetString(ea.Body);
-
-                await ProcessEvent(eventName, message);
-
-                channel.BasicAck(ea.DeliveryTag, false);
-            }
-
-            consumer.Received += OnConsumerOnReceived;
-
-            channel.BasicConsume(_queueName, false, consumer);
 
             channel.CallbackException += (sender, ea) =>
             {
@@ -154,6 +138,35 @@ namespace Elwark.EventBus.RabbitMQ
             };
 
             return channel;
+        }
+
+        public void StartConsume()
+        {
+            for (var i = 0; i < _consumerCount; i++)
+            {
+                var consumer = new EventingBasicConsumer(_consumerChannel);
+
+                consumer.Received += OnConsumerOnReceived;
+
+                _consumerChannel.BasicConsume(_queueName, false, consumer);
+            }
+        }
+
+        private async void OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
+        {
+            var eventName = ea.RoutingKey;
+            var message = Encoding.UTF8.GetString(ea.Body);
+            
+            try
+            {
+                await ProcessEvent(eventName, message);
+                _consumerChannel.BasicAck(ea.DeliveryTag, false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(new EventId(ex.HResult), ex, "Event handler error: {message}", ex.Message);
+                _consumerChannel.BasicNack(ea.DeliveryTag, false, true);
+            }
         }
 
         private async Task ProcessEvent(string eventName, string message)
