@@ -23,9 +23,8 @@ namespace Elwark.EventBus.RabbitMQ
         private readonly IServiceProvider _serviceProvider;
         private readonly IEventBusSubscriptionsManager _subsManager;
         private readonly string _queueName;
-        
+
         private readonly ushort _retryCount;
-        private readonly ushort _consumerCount;
 
         private IModel _consumerChannel;
 
@@ -35,9 +34,8 @@ namespace Elwark.EventBus.RabbitMQ
             IEventBusSubscriptionsManager subsManager,
             IServiceProvider serviceProvider,
             string exchangeName,
-            string queueName = null,
-            ushort consumerCount = 10,
-            ushort retryCount = 5)
+            string queueName,
+            ushort retryCount)
         {
             _persistentConnection =
                 persistentConnection ?? throw new ArgumentNullException(nameof(persistentConnection));
@@ -46,7 +44,6 @@ namespace Elwark.EventBus.RabbitMQ
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             _exchangeName = exchangeName ?? throw new ArgumentNullException(nameof(exchangeName));
             _queueName = queueName;
-            _consumerCount = consumerCount;
             _retryCount = retryCount;
             _consumerChannel = CreateConsumerChannel();
             _subsManager.OnEventRemoved += SubsManager_OnEventRemoved;
@@ -73,24 +70,22 @@ namespace Elwark.EventBus.RabbitMQ
                         $"{time.TotalSeconds:n1}", ex.Message)
                 );
 
-            using (var channel = _persistentConnection.CreateModel())
+            using var channel = _persistentConnection.CreateModel();
+            var eventName = evt.GetType().Name;
+
+            channel.ExchangeDeclare(_exchangeName, ExchangeType.Direct);
+
+            var message = JsonConvert.SerializeObject(evt);
+            var body = Encoding.UTF8.GetBytes(message);
+
+            policy.Execute(() =>
             {
-                var eventName = evt.GetType().Name;
+                var properties = channel.CreateBasicProperties();
+                properties.DeliveryMode = 2; // persistent
+                properties.Persistent = true;
 
-                channel.ExchangeDeclare(_exchangeName, ExchangeType.Direct);
-
-                var message = JsonConvert.SerializeObject(evt);
-                var body = Encoding.UTF8.GetBytes(message);
-
-                policy.Execute(() =>
-                {
-                    var properties = channel.CreateBasicProperties();
-                    properties.DeliveryMode = 2; // persistent
-                    properties.Persistent = true;
-
-                    channel.BasicPublish(_exchangeName, eventName, true, properties, body);
-                });
-            }
+                channel.BasicPublish(_exchangeName, eventName, true, properties, body);
+            });
         }
 
         public void SubscribeDynamic<TH>(string eventName) where TH : IDynamicIntegrationEventHandler
@@ -142,21 +137,17 @@ namespace Elwark.EventBus.RabbitMQ
 
         public void StartConsume()
         {
-            for (var i = 0; i < _consumerCount; i++)
-            {
-                var consumer = new EventingBasicConsumer(_consumerChannel);
+            var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
+            consumer.Received += OnConsumerOnReceived;
 
-                consumer.Received += OnConsumerOnReceived;
-
-                _consumerChannel.BasicConsume(_queueName, false, consumer);
-            }
+            _consumerChannel.BasicConsume(_queueName, false, consumer);
         }
 
-        private async void OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
+        private async Task OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
         {
             var eventName = ea.RoutingKey;
             var message = Encoding.UTF8.GetString(ea.Body);
-            
+
             try
             {
                 await ProcessEvent(eventName, message);
@@ -177,35 +168,36 @@ namespace Elwark.EventBus.RabbitMQ
                 return;
             }
 
-            using (var scope = _serviceProvider.CreateScope())
-                foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
+            using var scope = _serviceProvider.CreateScope();
+
+            foreach (var subscription in _subsManager.GetHandlersForEvent(eventName))
+            {
+                _logger.LogInformation("Handling {event} -> {handler}. Message {message}",
+                    eventName, subscription.HandlerType.Name, message);
+
+                if (subscription.IsDynamic)
                 {
-                    _logger.LogInformation("Handling {event} -> {handler}. Message {message}",
-                        eventName, subscription.HandlerType.Name, message);
+                    if (!(scope.ServiceProvider.GetService(subscription.HandlerType) is
+                        IDynamicIntegrationEventHandler handler))
+                        continue;
 
-                    if (subscription.IsDynamic)
-                    {
-                        if (!(scope.ServiceProvider.GetService(subscription.HandlerType) is
-                            IDynamicIntegrationEventHandler handler))
-                            continue;
-
-                        await handler.Handle((dynamic) JObject.Parse(message));
-                    }
-                    else
-                    {
-                        var handler = (dynamic) scope.ServiceProvider.GetService(subscription.HandlerType);
-                        if (handler is null)
-                            continue;
-
-                        var eventType = _subsManager.GetEventTypeByName(eventName);
-                        var integrationEvent = JsonConvert.DeserializeObject(message, eventType);
-
-                        await handler.Handle((dynamic) integrationEvent);
-                    }
-
-                    _logger.LogInformation("Has handled {event} -> {handler} successful",
-                        eventName, subscription.HandlerType.Name);
+                    await handler.Handle((dynamic) JObject.Parse(message));
                 }
+                else
+                {
+                    var handler = (dynamic) scope.ServiceProvider.GetService(subscription.HandlerType);
+                    if (handler is null)
+                        continue;
+
+                    var eventType = _subsManager.GetEventTypeByName(eventName);
+                    var integrationEvent = JsonConvert.DeserializeObject(message, eventType);
+
+                    await handler.Handle((dynamic) integrationEvent);
+                }
+
+                _logger.LogInformation("Has handled {event} -> {handler} successful",
+                    eventName, subscription.HandlerType.Name);
+            }
         }
 
         private void SubsManager_OnEventRemoved(object sender, string eventName)
@@ -213,15 +205,12 @@ namespace Elwark.EventBus.RabbitMQ
             if (!_persistentConnection.IsConnected)
                 _persistentConnection.TryConnect();
 
-            using (var channel = _persistentConnection.CreateModel())
-            {
-                channel.QueueUnbind(_queueName, _exchangeName, eventName);
+            using var channel = _persistentConnection.CreateModel();
 
-                if (!_subsManager.IsEmpty)
-                    return;
+            channel.QueueUnbind(_queueName, _exchangeName, eventName);
 
+            if (_subsManager.IsEmpty)
                 _consumerChannel.Close();
-            }
         }
 
         private void DoInternalSubscription(string eventName)
@@ -232,8 +221,9 @@ namespace Elwark.EventBus.RabbitMQ
             if (!_persistentConnection.IsConnected)
                 _persistentConnection.TryConnect();
 
-            using (var channel = _persistentConnection.CreateModel())
-                channel.QueueBind(_queueName, _exchangeName, eventName);
+            using var channel = _persistentConnection.CreateModel();
+
+            channel.QueueBind(_queueName, _exchangeName, eventName);
         }
     }
 }
