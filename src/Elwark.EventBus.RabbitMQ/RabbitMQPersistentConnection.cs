@@ -92,6 +92,7 @@ namespace Elwark.EventBus.RabbitMQ
             if (_disposed)
                 return;
             
+            Dispose();
             _logger.LogWarning("A RabbitMQ connection is shutdown. Trying to re-connect...");
 
             TryConnect();
@@ -102,6 +103,7 @@ namespace Elwark.EventBus.RabbitMQ
             if (_disposed)
                 return;
             
+            Dispose();
             _logger.LogWarning("A RabbitMQ connection throw exception. Trying to re-connect...");
 
             TryConnect();
@@ -112,6 +114,7 @@ namespace Elwark.EventBus.RabbitMQ
             if (_disposed)
                 return;
             
+            Dispose();
             _logger.LogWarning("A RabbitMQ connection is on shutdown. Trying to re-connect...");
 
             TryConnect();

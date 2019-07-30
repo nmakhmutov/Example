@@ -19,11 +19,9 @@ namespace Elwark.EventBus.Logging.EF
             var strategy = _context.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
-                using (var transaction = _context.Database.CurrentTransaction ?? _context.Database.BeginTransaction())
-                {
-                    await action();
-                    transaction.Commit();
-                }
+                using var transaction = _context.Database.CurrentTransaction ?? _context.Database.BeginTransaction();
+                await action();
+                transaction.Commit();
             });
         }
     }
