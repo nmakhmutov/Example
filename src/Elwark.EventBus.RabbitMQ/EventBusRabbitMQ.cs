@@ -14,7 +14,6 @@ using RabbitMQ.Client.Exceptions;
 
 namespace Elwark.EventBus.RabbitMQ
 {
-    // ReSharper disable once InconsistentNaming
     public class EventBusRabbitMQ : IEventBus, IDisposable
     {
         private readonly string _exchangeName;
@@ -126,10 +125,15 @@ namespace Elwark.EventBus.RabbitMQ
 
             channel.QueueDeclare(_queueName, true, false, false, null);
 
+            channel.BasicQos(0, 1, false);
+
             channel.CallbackException += (sender, ea) =>
             {
+                _logger.LogWarning(ea.Exception, "Recreating RabbitMQ consumer channel");
+
                 _consumerChannel.Dispose();
                 _consumerChannel = CreateConsumerChannel();
+                StartConsume();
             };
 
             return channel;
@@ -137,6 +141,8 @@ namespace Elwark.EventBus.RabbitMQ
 
         public void StartConsume()
         {
+            _logger.LogTrace("Starting RabbitMQ basic consume");
+
             var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
             consumer.Received += OnConsumerOnReceived;
 

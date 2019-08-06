@@ -77,14 +77,7 @@ namespace Elwark.EventBus.RabbitMQ
 
             _disposed = true;
 
-            try
-            {
-                _connection.Dispose();
-            }
-            catch (IOException ex)
-            {
-                _logger.LogCritical(ex.ToString());
-            }
+            Close();
         }
 
         private void OnConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
@@ -92,9 +85,9 @@ namespace Elwark.EventBus.RabbitMQ
             if (_disposed)
                 return;
             
-            Dispose();
             _logger.LogWarning("A RabbitMQ connection is shutdown. Trying to re-connect...");
-
+            
+            Close();
             TryConnect();
         }
 
@@ -103,9 +96,9 @@ namespace Elwark.EventBus.RabbitMQ
             if (_disposed)
                 return;
             
-            Dispose();
             _logger.LogWarning("A RabbitMQ connection throw exception. Trying to re-connect...");
-
+            
+            Close();
             TryConnect();
         }
 
@@ -114,10 +107,23 @@ namespace Elwark.EventBus.RabbitMQ
             if (_disposed)
                 return;
             
-            Dispose();
             _logger.LogWarning("A RabbitMQ connection is on shutdown. Trying to re-connect...");
-
+            
+            Close();
             TryConnect();
+        }
+
+        private void Close()
+        {
+            try
+            {
+                _connection.Close();
+                _connection.Dispose();
+            }
+            catch (IOException ex)
+            {
+                _logger.LogCritical(ex.ToString());
+            }
         }
     }
 }
