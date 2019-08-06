@@ -9,7 +9,7 @@ namespace Elwark.EventBus.Logging.EF
 {
     public interface IIntegrationEventLogService
     {
-        Task<IntegrationEventLogEntry> RetrieveEventLogPendingToPublishAsync(Guid id,
+        Task<IntegrationEventLogEntry> GetAsync(Guid id,
             CancellationToken cancellationToken = default);
 
         Task SaveEventAsync(IntegrationEvent evt);

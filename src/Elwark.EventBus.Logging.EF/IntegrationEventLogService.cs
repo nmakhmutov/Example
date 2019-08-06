@@ -28,14 +28,10 @@ namespace Elwark.EventBus.Logging.EF
                 e.DeserializeJsonContent(_eventTypes.Types.FirstOrDefault(t => t.Name == e.EventTypeShortName)))
             .ToArrayAsync(cancellationToken);
 
-        public async Task<IntegrationEventLogEntry> RetrieveEventLogPendingToPublishAsync(Guid id,
-            CancellationToken cancellationToken)
+        public async Task<IntegrationEventLogEntry> GetAsync(Guid id, CancellationToken cancellationToken)
         {
             var result = await _context.IntegrationEventLogs
-                .SingleOrDefaultAsync(x => x.EventId == id &&
-                                           (x.State == EventStateEnum.NotPublished ||
-                                            x.State == EventStateEnum.PublishedFailed),
-                    cancellationToken);
+                .SingleOrDefaultAsync(x => x.EventId == id, cancellationToken);
 
             return result?.DeserializeJsonContent(
                 _eventTypes.Types.FirstOrDefault(x => x.Name == result.EventTypeShortName));
