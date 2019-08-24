@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using Polly;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -19,11 +20,10 @@ namespace Elwark.EventBus.RabbitMQ
         private readonly string _exchangeName;
         private readonly ILogger<EventBusRabbitMQ> _logger;
         private readonly IRabbitMQPersistentConnection _persistentConnection;
+        private readonly string _queueName;
+        private readonly ushort _retryCount;
         private readonly IServiceProvider _serviceProvider;
         private readonly IEventBusSubscriptionsManager _subsManager;
-        private readonly string _queueName;
-
-        private readonly ushort _retryCount;
 
         private IModel _consumerChannel;
 
@@ -47,6 +47,14 @@ namespace Elwark.EventBus.RabbitMQ
             _consumerChannel = CreateConsumerChannel();
             _subsManager.OnEventRemoved += SubsManager_OnEventRemoved;
         }
+
+        private static JsonSerializerSettings JsonSettings =>
+            new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver(),
+                NullValueHandling = NullValueHandling.Ignore,
+                Formatting = Formatting.None
+            };
 
         public void Dispose()
         {
@@ -74,7 +82,7 @@ namespace Elwark.EventBus.RabbitMQ
 
             channel.ExchangeDeclare(_exchangeName, ExchangeType.Direct);
 
-            var message = JsonConvert.SerializeObject(evt);
+            var message = JsonConvert.SerializeObject(evt, JsonSettings);
             var body = Encoding.UTF8.GetBytes(message);
 
             policy.Execute(() =>
@@ -114,6 +122,16 @@ namespace Elwark.EventBus.RabbitMQ
         public void Unsubscribe<T, TH>() where T : IntegrationEvent where TH : IIntegrationEventHandler<T> =>
             _subsManager.RemoveSubscription<T, TH>();
 
+        public void StartConsume()
+        {
+            _logger.LogTrace("Starting RabbitMQ basic consume");
+
+            var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
+            consumer.Received += OnConsumerOnReceived;
+
+            _consumerChannel.BasicConsume(_queueName, false, consumer);
+        }
+
         private IModel CreateConsumerChannel()
         {
             if (!_persistentConnection.IsConnected)
@@ -137,16 +155,6 @@ namespace Elwark.EventBus.RabbitMQ
             };
 
             return channel;
-        }
-
-        public void StartConsume()
-        {
-            _logger.LogTrace("Starting RabbitMQ basic consume");
-
-            var consumer = new AsyncEventingBasicConsumer(_consumerChannel);
-            consumer.Received += OnConsumerOnReceived;
-
-            _consumerChannel.BasicConsume(_queueName, false, consumer);
         }
 
         private async Task OnConsumerOnReceived(object model, BasicDeliverEventArgs ea)
