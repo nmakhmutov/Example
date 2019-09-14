@@ -24,7 +24,7 @@ namespace Elwark.EventBus.RabbitMQ
         {
             _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _clientProviderName = clientProviderName;
+            _clientProviderName = clientProviderName ?? throw new ArgumentNullException(nameof(clientProviderName));
             _retryCount = retryCount;
         }
 

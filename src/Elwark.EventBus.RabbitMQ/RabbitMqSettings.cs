@@ -2,6 +2,8 @@
 {
     public class RabbitMqSettings
     {
+        public RabbitMqSettings(){}
+        
         public RabbitMqSettings(string hostName, string username, string password, string virtualHost,
             string exchange, string queueName, ushort retryCount, string connectionName)
         {
