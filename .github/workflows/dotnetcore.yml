@@ -14,19 +14,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@master
 
-      - name: Build Abstractions
-        run: |  
-          cd ./src/Elwark.EventBus.Abstractions
-          dotnet pack -c Release -o out
-      
-      - name: Build Logging EF
+      - name: Build nugets
         run: |
-          cd ./src/Elwark.EventBus.Logging.EF
-          dotnet pack -c Release -o out
-        
-      - name: Build RabbitMQ
-        run: |
-          cd ./src/Elwark.EventBus.RabbitMQ
           dotnet pack -c Release -o out
                     
       - name: Install NuGet client
@@ -36,5 +25,5 @@ jobs:
         run: nuget source Add -Name "GitHub" -Source "https://nuget.pkg.github.com/nmakhmutov/index.json" -UserName nmakhmutov -Password ${{ secrets.GT }}
 
       - name: Push generated package to GitHub registry
-        run: nuget push ./*.nupkg -Source "GitHub" -SkipDuplicate
+        run: nuget push ./out/*.nupkg -Source "GitHub" -SkipDuplicate
         
