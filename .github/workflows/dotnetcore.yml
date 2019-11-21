@@ -1,0 +1,40 @@
+name: NuGet Generation
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+    name: Update NuGet 
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@master
+
+      - name: Build Abstractions
+        run: |  
+          cd ./src/Elwark.EventBus.Abstractions
+          dotnet pack -c Release -o out
+      
+      - name: Build Logging EF
+        run: |
+          cd ./src/Elwark.EventBus.Logging.EF
+          dotnet pack -c Release -o out
+        
+      - name: Build RabbitMQ
+        run: |
+          cd ./src/Elwark.EventBus.RabbitMQ
+          dotnet pack -c Release -o out
+                    
+      - name: Install NuGet client
+        uses: warrenbuckley/Setup-Nuget@v1
+
+      - name: Add private GitHub registry to NuGet
+        run: nuget source Add -Name "GitHub" -Source "https://nuget.pkg.github.com/nmakhmutov/index.json" -UserName nmakhmutov -Password ${{ secrets.GT }}
+
+      - name: Push generated package to GitHub registry
+        run: nuget push ./*.nupkg -Source "GitHub" -SkipDuplicate
+        
