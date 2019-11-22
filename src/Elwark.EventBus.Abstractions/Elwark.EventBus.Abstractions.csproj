@@ -6,7 +6,7 @@
         <Description>Event bus abstractions</Description>
         <PackageProjectUrl>https://github.com/nmakhmutov/Elwark.EventBus</PackageProjectUrl>
         <RepositoryUrl>https://github.com/nmakhmutov/Elwark.EventBus</RepositoryUrl>
-        <PackageVersion>1.0.0</PackageVersion>
+        <PackageVersion>1.0.1</PackageVersion>
         <LangVersion>8</LangVersion>
         <IsPackable>true</IsPackable>
     </PropertyGroup>
