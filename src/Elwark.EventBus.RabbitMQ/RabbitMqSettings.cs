@@ -49,7 +49,7 @@ namespace Elwark.EventBus.RabbitMQ
 
             sb.Append($"{HostName}:{Port}/");
             
-            if (!string.IsNullOrEmpty(VirtualHost) && VirtualHost[0] == '/') 
+            if (!string.IsNullOrEmpty(VirtualHost) && VirtualHost[0] != '/') 
                 sb.Append($"{VirtualHost}");
 
             return sb.ToString();
