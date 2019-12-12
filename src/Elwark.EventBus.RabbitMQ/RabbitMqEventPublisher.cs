@@ -23,6 +23,6 @@ namespace Elwark.EventBus.RabbitMq
                     ctx.UsePublishConfiguration(cfg =>
                         cfg.WithRoutingKey(evt.GetType().Name)
                             .OnExchange(_configuration.ExchangeName)
-                    ), token: cancellationToken);
+                    ), cancellationToken);
     }
 }
