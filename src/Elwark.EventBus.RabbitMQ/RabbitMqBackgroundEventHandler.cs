@@ -38,10 +38,15 @@ namespace Elwark.EventBus.RabbitMq
 
             await _busClient.SubscribeAsync<TEvent, ElwarkMessageContext>(async (evt, context) =>
                 {
-                    _logger.LogInformation($"Recived message {evt.Id}. Retry {context.RetryInformation.NumberOfRetries}");
-                    
+                    _logger.LogInformation("Received message {id}. Retry {count}", evt.Id,
+                        context.RetryInformation.NumberOfRetries);
+
                     if (context.RetryInformation.NumberOfRetries >= _configuration.RetryCount)
+                    {
+                        _logger.LogCritical("Event {evt} with body {@body} rejected after {count} handling attempt",
+                            evt.GetType().Name, evt, context.RetryInformation.NumberOfRetries);
                         return new Reject(false);
+                    }
 
                     using var services = _serviceProvider.CreateScope();
                     var handlers = services.ServiceProvider.GetServices<IIntegrationEventHandler<TEvent>>();
@@ -55,6 +60,8 @@ namespace Elwark.EventBus.RabbitMq
                         }
                         catch
                         {
+                            _logger.LogWarning("Error has occurred when handled event {evt} by handler {handler}",
+                                evt.GetType().Name, handler.GetType().Name);
                             return new Retry(TimeSpan.FromSeconds(10 * context.RetryInformation.NumberOfRetries));
                         }
                     }
