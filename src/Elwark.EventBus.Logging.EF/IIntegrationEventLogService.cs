@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Elwark.EventBus.Abstractions;
 
 namespace Elwark.EventBus.Logging.EF
 {

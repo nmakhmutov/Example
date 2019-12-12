@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Linq;
-using Elwark.EventBus.Abstractions;
 using Newtonsoft.Json;
 
 namespace Elwark.EventBus.Logging.EF
