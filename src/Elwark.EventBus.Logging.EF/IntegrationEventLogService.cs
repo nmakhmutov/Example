@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Elwark.EventBus.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Elwark.EventBus.Logging.EF

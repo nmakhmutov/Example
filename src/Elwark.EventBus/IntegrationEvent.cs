@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace Elwark.EventBus.Abstractions
+namespace Elwark.EventBus
 {
     public class IntegrationEvent
     {
