@@ -31,16 +31,5 @@ namespace Elwark.EventBus.Logging.EF
         public string Content { get; private set; }
         
         public string EventTypeShortName => EventTypeName.Split('.').Last();
-        
-        public IntegrationEvent IntegrationEvent { get; private set; }
-
-        public IntegrationEventLogEntry DeserializeJsonContent(Type type)
-        {
-            if (type == null)
-                return this;
-            
-            IntegrationEvent = JsonConvert.DeserializeObject(Content, type) as IntegrationEvent;
-            return this;
-        }
     }
 }

@@ -23,8 +23,6 @@ namespace Elwark.EventBus.Logging.EF
 
             builder.Ignore(x => x.EventTypeShortName);
 
-            builder.Ignore(x => x.IntegrationEvent);
-            
             builder.HasKey(e => e.EventId);
 
             builder.Property(e => e.EventId)
