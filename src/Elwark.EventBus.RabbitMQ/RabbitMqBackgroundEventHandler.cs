@@ -76,13 +76,13 @@ namespace Elwark.EventBus.RabbitMq
             ctx.UseMessageContext(context => new ElwarkMessageContext
                 {
                     RetryInformation = context.GetRetryInformation(),
-                    GlobalRequestId = Guid.NewGuid()
+                    GlobalRequestId = (context.GetMessage() as IntegrationEvent)?.Id ?? Guid.NewGuid()
                 })
                 .UseConsumerConcurrency(_configuration.PrefetchCount)
                 .UseSubscribeConfiguration(cfg => cfg
                     .Consume(x => x.WithPrefetchCount(_configuration.PrefetchCount)
                         .WithRoutingKey(routingKey))
-                    .FromDeclaredQueue(x => x.WithName($"{_configuration.QueueName}:{routingKey.ToLower()}")
+                    .FromDeclaredQueue(x => x.WithName($"{_configuration.QueueName}:{routingKey}")
                         .WithArgument(QueueArgument.DeadLetterExchange, "dlx"))
                     .OnDeclaredExchange(x => x.WithName(_configuration.ExchangeName)));
     }

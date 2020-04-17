@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Elwark.EventBus;
 using Elwark.EventBus.RabbitMq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
@@ -33,9 +32,9 @@ namespace Elwark.EventBus.Sample
         {
             foreach (var i in Enumerable.Range(0, 10))
             {
-                publisher.PublishAsync(new TestEvent {Name = $"test message {i}"}).GetAwaiter().GetResult();    
+                publisher.PublishAsync(new TestEvent {Name = $"test message {i}"}).GetAwaiter().GetResult();
+                Thread.Sleep(i * 1000);
             }
-            
         }
     }
 
@@ -55,7 +54,7 @@ namespace Elwark.EventBus.Sample
 
         public async Task HandleAsync(TestEvent evt, CancellationToken cancellationToken)
         {
-            throw new ArgumentException();
+            throw new ArgumentException("MEssage");
             _logger.LogInformation(JsonConvert.SerializeObject(evt));
             await Task.CompletedTask;
         }

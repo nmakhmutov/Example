@@ -16,7 +16,7 @@ namespace Elwark.EventBus.Logging.EF
         public Task<IntegrationEventLogEntry> GetAsync(Guid id, CancellationToken cancellationToken) =>
             _context.IntegrationEventLogs.SingleOrDefaultAsync(x => x.EventId == id, cancellationToken);
         
-        public Task SaveEventAsync(IntegrationEvent evt)
+        public Task SaveEventAsync(IntegrationEvent evt, CancellationToken cancellationToken)
         {
             if (_context.Database.CurrentTransaction is null)
                 _context.Database.BeginTransaction();
@@ -24,19 +24,19 @@ namespace Elwark.EventBus.Logging.EF
             var eventLogEntry = new IntegrationEventLogEntry(evt);
             _context.IntegrationEventLogs.Add(eventLogEntry);
 
-            return _context.SaveChangesAsync();
+            return _context.SaveChangesAsync(cancellationToken);
         }
 
-        public Task MarkEventAsPublishedAsync(Guid eventId) =>
-            UpdateEventStatus(eventId, EventStateEnum.Published);
+        public Task MarkEventAsPublishedAsync(Guid eventId, CancellationToken cancellationToken) =>
+            UpdateEventStatus(eventId, EventStateEnum.Published, cancellationToken);
 
-        public Task MarkEventAsInProgressAsync(Guid eventId) =>
-            UpdateEventStatus(eventId, EventStateEnum.InProgress);
+        public Task MarkEventAsInProgressAsync(Guid eventId, CancellationToken cancellationToken) =>
+            UpdateEventStatus(eventId, EventStateEnum.InProgress, cancellationToken);
 
-        public Task MarkEventAsFailedAsync(Guid eventId) =>
-            UpdateEventStatus(eventId, EventStateEnum.PublishedFailed);
+        public Task MarkEventAsFailedAsync(Guid eventId, CancellationToken cancellationToken) =>
+            UpdateEventStatus(eventId, EventStateEnum.PublishedFailed, cancellationToken);
 
-        private Task UpdateEventStatus(Guid eventId, EventStateEnum status)
+        private Task UpdateEventStatus(Guid eventId, EventStateEnum status, CancellationToken cancellationToken)
         {
             var eventLogEntry = _context.IntegrationEventLogs.Single(ie => ie.EventId == eventId);
             eventLogEntry.State = status;
@@ -46,7 +46,7 @@ namespace Elwark.EventBus.Logging.EF
 
             _context.IntegrationEventLogs.Update(eventLogEntry);
 
-            return _context.SaveChangesAsync();
+            return _context.SaveChangesAsync(cancellationToken);
         }
     }
 }

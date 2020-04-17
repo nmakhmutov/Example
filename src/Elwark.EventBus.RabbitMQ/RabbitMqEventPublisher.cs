@@ -1,4 +1,3 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using RawRabbit;
@@ -20,9 +19,13 @@ namespace Elwark.EventBus.RabbitMq
         public Task PublishAsync(IntegrationEvent evt, CancellationToken cancellationToken) =>
             _busClient.PublishAsync(evt,
                 ctx =>
-                    ctx.UsePublishConfiguration(cfg =>
-                        cfg.WithRoutingKey(evt.GetType().Name)
-                            .OnExchange(_configuration.ExchangeName)
-                    ), cancellationToken);
+                    ctx.UseMessageContext(new ElwarkMessageContext
+                        {
+                            GlobalRequestId = evt.Id
+                        })
+                        .UsePublishConfiguration(cfg =>
+                            cfg.WithRoutingKey(evt.GetType().Name)
+                                .OnExchange(_configuration.ExchangeName)
+                        ), cancellationToken);
     }
 }

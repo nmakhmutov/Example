@@ -19,7 +19,7 @@ namespace Elwark.EventBus.Logging.EF
 
         void ConfigureIntegrationEventLogEntry(EntityTypeBuilder<IntegrationEventLogEntry> builder)
         {
-            builder.ToTable("integration_event_log");
+            builder.ToTable("integration_event_logs");
 
             builder.Ignore(x => x.EventTypeShortName);
 
