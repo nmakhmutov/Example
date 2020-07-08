@@ -12,7 +12,7 @@ namespace Elwark.EventBus.Logging.EF
         {
             EventId = evt.Id;            
             CreationTime = evt.CreationDate;
-            EventTypeName = evt.GetType().FullName;
+            EventTypeName = evt.GetType().AssemblyQualifiedName;
             Content = JsonConvert.SerializeObject(evt);
             State = EventStateEnum.NotPublished;
             TimesSent = 0;
@@ -30,6 +30,6 @@ namespace Elwark.EventBus.Logging.EF
         
         public string Content { get; private set; }
         
-        public string EventTypeShortName => EventTypeName.Split('.').Last();
+        public string EventTypeShortName => EventTypeName.Split(',').First().Split(".").Last();
     }
 }
